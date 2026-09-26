@@ -1,4 +1,5 @@
 name: Refresh TankPris data
+# Runs at least every 15 minutes; source feeds may themselves update less often.
 on:
   schedule:
     - cron: "*/15 * * * *"
