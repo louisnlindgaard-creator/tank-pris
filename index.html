@@ -1,1 +1,112 @@
-<!doctype html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#174ea6"><title>TankPris</title><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>*{box-sizing:border-box}body{margin:0;font-family:Arial;background:#e7eaee;color:#17202a}.app{height:100dvh;max-width:800px;margin:auto;background:#f5f6f7;display:flex;flex-direction:column;overflow:hidden}header{padding:11px 14px;background:#fff;border-bottom:1px solid #c8cdd3;display:flex}.logo{font-size:24px;font-weight:900;color:#174ea6}.stat{margin-left:auto;font-size:11px;font-weight:800;color:#15783a}.tools,.fuels{background:#fff;padding:8px;display:grid;gap:6px;border-bottom:1px solid #c8cdd3}.tools{grid-template-columns:1fr 90px 110px}.fuels{grid-template-columns:repeat(4,1fr)}button,input,select{font:inherit}button,input,select{padding:9px;border:1px solid #888;border-radius:7px;background:#fff}button{font-weight:800}.on,.primary{background:#174ea6;color:#fff;border-color:#174ea6}.map{flex:1;min-height:280px;position:relative}.notice{position:absolute;z-index:999;top:8px;left:8px;right:8px;background:#fff;border:1px solid #999;border-radius:8px;padding:8px;font-size:12px;box-shadow:0 2px 8px #0002}.market{position:absolute;z-index:999;bottom:8px;left:8px;background:#fff;border:1px solid #999;border-radius:8px;padding:9px;box-shadow:0 2px 8px #0002}.market b{font-size:18px}.list{background:#fff;max-height:30%;overflow:auto;border-top:1px solid #c8cdd3}.item{display:grid;grid-template-columns:38px 1fr auto;gap:8px;padding:8px;border-bottom:1px solid #eee}.badge{width:36px;height:36px;border-radius:50%;background:#e5ebf6;color:#174ea6;display:grid;place-items:center;font-weight:900}.name{font-weight:800}.small{font-size:11px;color:#666}.price{font-weight:900}.bottom{background:#fff;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:7px}@media(max-width:600px){.tools{grid-template-columns:1fr 82px}.tools select{grid-column:1/-1}.list{max-height:32%}}</style></head><body><div class="app"><header><div class="logo">⛽ TankPris</div><div class="stat" id="stat">FORBINDER…</div></header><div class="tools"><input id="q" placeholder="Søg by eller sted"><button id="search">Søg</button><select id="country"><option value="DK">🇩🇰 Danmark</option><option value="SE">🇸🇪 Sverige</option><option value="NO">🇳🇴 Norge</option></select></div><div class="fuels"><button class="fuel on" data-f="sp95">95</button><button class="fuel" data-f="sp98">98</button><button class="fuel" data-f="diesel">Diesel</button><button class="fuel" data-f="el">⚡ El</button></div><div class="map"><div id="map" style="height:100%"></div><div class="notice" id="notice">Henter aktuelle data…</div><div class="market" id="market"><b>—</b><div class="small">national prisstatus</div></div></div><div class="list" id="list"></div><div class="bottom"><button id="loc">◎ Min placering</button><button class="primary" id="report">⚠ Rapportér pris</button></div></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>const S="https://www.fuel-prices.eu/live/api.php?action=summary",M={DK:[[56.1,10],6],SE:[[59.3,15],5],NO:[[64,11],5]};let fuel="sp95",cc="DK",stations=[];const map=L.map("map").setView(...M.DK);L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap contributors"}).addTo(map);const layer=L.layerGroup().addTo(map);const esc=s=>String(s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));const fName=()=>fuel==="sp95"?"95":fuel==="sp98"?"98":fuel==="diesel"?"Diesel":"El";async function summary(){try{let j=await(await fetch(S,{cache:"no-store"})).json(),c=j.data.countries.find(x=>x.country_code===cc),f=c?.fuels?.[fuel];document.getElementById("market").innerHTML=f?'<b>'+f.avg.toFixed(3)+' EUR/l</b><div class="small">'+fName()+' nationalt gennemsnit</div>':'<b>—</b><div class="small">Ingen data</div>';document.getElementById("notice").textContent="Nationale priser opdateres fra live datakilde. Stationspris vises kun ved verificeret stationsfeed.";document.getElementById("stat").textContent="DATA OK"}catch(e){document.getElementById("stat").textContent="DATAFEJL";document.getElementById("notice").textContent="Live-data kunne ikke hentes. Ingen opdigtede priser vises."}}async function osm(){const c=map.getCenter(),q='[out:json][timeout:20];nwr(around:20000,'+c.lat+','+c.lng+')[amenity=fuel];out center tags;',u='https://overpass-api.de/api/interpreter?data='+encodeURIComponent(q);try{let j=await(await fetch(u)).json();return j.elements.map(x=>({name:x.tags?.name||x.tags?.brand||"Tankstation",address:[x.tags?.['addr:street'],x.tags?.['addr:housenumber'],x.tags?.['addr:city']].filter(Boolean).join(" "),lat:x.lat??x.center?.lat,lng:x.lon??x.center?.lon,price:null,source:"OpenStreetMap"})).filter(x=>x.lat&&x.lng)}catch(e){return[]}}async function noPrices(){try{let c=map.getCenter(),u='https://backend.drivstoffapp.no/stations/fuel/nearby?lat='+c.lat+'&lng='+c.lng+'&radius=20',j=await(await fetch(u)).json(),a=j.stations||j.data||[];return a.map(s=>({name:s.name||"Tankstation",address:s.address||"",lat:+(s.lat??s.latitude),lng:+(s.lng??s.longitude),price:(s.prices||{})[fuel]??null,source:"Drivstoffapp"})).filter(x=>x.lat&&x.lng)}catch(e){return[]}}async function render(){layer.clearLayers();let a=cc==="NO"?await noPrices():await osm();stations=a;let Ls=document.getElementById("list");Ls.innerHTML=a.slice(0,80).map((s,i)=>'<div class="item"><div class="badge">'+(i+1)+'</div><div><div class="name">'+esc(s.name)+'</div><div class="small">'+esc(s.address)+'</div></div><div class="price">'+(s.price!=null?Number(s.price).toFixed(2):"—")+'</div></div>').join("")||'<div class="small" style="padding:12px">Ingen stationer fundet.</div>';a.forEach(s=>{let m=L.circleMarker([s.lat,s.lng],{radius:7,weight:2}).addTo(layer);m.bindPopup('<b>'+esc(s.name)+'</b><br>'+esc(s.address||"")+'<br>'+fName()+': '+(s.price!=null?Number(s.price).toFixed(2)+" "+(cc==="NO"?"NOK/l":"kr/l"):"pris ikke tilgængelig")+'<br><small>'+esc(s.source)+'</small>')})}async function reload(){await summary();await render()}document.querySelectorAll(".fuel").forEach(b=>b.onclick=()=>{document.querySelectorAll(".fuel").forEach(x=>x.classList.remove("on"));b.classList.add("on");fuel=b.dataset.f;reload()});country.onchange=()=>{cc=country.value;map.setView(...M[cc]);reload()};document.getElementById("loc").onclick=()=>navigator.geolocation?.getCurrentPosition(p=>{map.setView([p.coords.latitude,p.coords.longitude],12);render()},()=>alert("Placering blev ikke givet."));document.getElementById("search").onclick=async()=>{let q=document.getElementById("q").value.trim();if(!q)return;let j=await(await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(q))).json();if(j[0]){map.setView([+j[0].lat,+j[0].lon],12);render()}else alert("Stedet blev ikke fundet.")};document.getElementById("report").onclick=()=>alert("Rapportfunktionen er klar i appens produktionsarkitektur; denne statiske version gemmer ikke data på en server endnu.");reload();setInterval(reload,900000);</script></body></html>
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#174ea6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>TankPris</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e4e8ec;font-family:Arial,Helvetica,sans-serif;color:#17202a}
+.app{height:100dvh;max-width:1050px;margin:auto;background:#f5f6f7;display:flex;flex-direction:column;overflow:hidden}
+header{background:#fff;padding:11px 14px;border-bottom:1px solid #c8cdd3;display:flex;align-items:center}.logo{font-size:24px;font-weight:900;color:#174ea6}.status{margin-left:auto;font-size:11px;font-weight:800;color:#15783a}
+.tools{background:#fff;padding:8px;display:grid;grid-template-columns:1fr 85px 125px;gap:6px;border-bottom:1px solid #c8cdd3}
+.tools input,.tools select,.tools button,.fuels button,.bottom button,.dialog input,.dialog select{font:inherit}
+.tools input,.tools select,.tools button,.fuels button,.bottom button{padding:10px;border:1px solid #777;border-radius:7px;background:#fff}.tools button,.primary,.fuel.on{background:#174ea6;color:#fff;border-color:#174ea6;font-weight:800}
+.fuels{background:#fff;padding:8px;display:grid;grid-template-columns:repeat(4,1fr);gap:6px;border-bottom:1px solid #c8cdd3}
+.wrap{position:relative;flex:1;min-height:300px}.map{height:100%;width:100%}
+.notice{position:absolute;z-index:900;top:9px;left:9px;right:9px;background:#fff;border:1px solid #999;border-radius:8px;padding:8px;font-size:12px;box-shadow:0 2px 8px #0002}
+.summary{position:absolute;z-index:900;left:9px;bottom:9px;background:#fff;border:1px solid #999;border-radius:9px;padding:10px;box-shadow:0 2px 8px #0002;max-width:290px}.summary b{font-size:19px}
+.list{background:#fff;max-height:33%;overflow:auto;border-top:1px solid #c8cdd3}.item{display:grid;grid-template-columns:38px 1fr auto;gap:8px;padding:9px;border-bottom:1px solid #eee;cursor:pointer}.item:hover{background:#f0f3f6}
+.badge{width:36px;height:36px;border-radius:50%;background:#e6edf8;color:#174ea6;display:grid;place-items:center;font-weight:900}.name{font-weight:800}.small{font-size:11px;color:#666}.price{font-size:16px;font-weight:900;text-align:right}.fresh{font-size:10px;color:#666;text-align:right;margin-top:2px}
+.bottom{background:#fff;border-top:1px solid #c8cdd3;padding:8px;display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.modal{display:none;position:fixed;inset:0;background:#0007;z-index:3000;align-items:flex-end;justify-content:center}.modal.show{display:flex}.dialog{background:#fff;width:min(650px,100%);padding:15px;border-radius:15px 15px 0 0}.dialog h2{margin:0 0 8px}.reportgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.wide{grid-column:1/-1}.dialog input,.dialog select{width:100%;padding:9px;border:1px solid #888;border-radius:6px}
+@media(max-width:650px){.tools{grid-template-columns:1fr 84px}.tools select{grid-column:1/-1}.list{max-height:35%}}
+</style>
+</head>
+<body>
+<div class="app">
+<header><div class="logo">⛽ TankPris</div><div class="status" id="status">FORBINDER…</div></header>
+<div class="tools"><input id="search" placeholder="Søg by eller adresse"><button id="searchBtn">Søg</button><select id="country"><option value="DK">🇩🇰 Danmark</option><option value="SE">🇸🇪 Sverige</option><option value="NO">🇳🇴 Norge</option></select></div>
+<div class="fuels"><button class="fuel on" data-f="sp95">95</button><button class="fuel" data-f="sp98">98</button><button class="fuel" data-f="diesel">Diesel</button><button class="fuel" data-f="el">⚡ El</button></div>
+<div class="wrap"><div id="map" class="map"></div><div id="notice" class="notice">Henter stationer og aktuelle priser…</div><div id="summary" class="summary"><b>—</b><div class="small">prisstatus</div></div></div>
+<div id="list" class="list"></div>
+<div class="bottom"><button id="loc">◎ Min placering</button><button class="primary" id="reportBtn">⚠ Rapportér pris</button></div>
+</div>
+
+<div class="modal" id="modal"><div class="dialog"><div style="display:flex;justify-content:space-between"><h2>Rapportér en pris</h2><button id="close">✕</button></div><div class="reportgrid"><input id="rstation" class="wide" placeholder="Tankstation"><select id="rfuel"><option value="sp95">95</option><option value="sp98">98</option><option value="diesel">Diesel</option><option value="el">El</option></select><input id="rprice" type="number" step="0.01" placeholder="Ny pris"><button id="submit" class="primary wide">Gem rapport</button></div><div id="rmsg" class="small"></div></div></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+var META={DK:{name:"Danmark",bounds:[[54.4,8.0],[57.9,15.5]],cur:"DKK"},SE:{name:"Sverige",bounds:[[55.0,10.5],[69.2,24.5]],cur:"SEK"},NO:{name:"Norge",bounds:[[57.8,4.0],[71.5,31.5]],cur:"NOK"}};
+var fuel="sp95",cc="DK",markers=[],stations=[],selected=null;
+var map=L.map("map").fitBounds(META.DK.bounds);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap contributors"}).addTo(map);
+var layer=L.layerGroup().addTo(map);
+
+function esc(s){return String(s||"").replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function fName(){return fuel==="sp95"?"95":fuel==="sp98"?"98":fuel==="diesel"?"Diesel":"El"}
+function radiusBounds(){var b=map.getBounds();return [b.getSouth(),b.getWest(),b.getNorth(),b.getEast()].join(",")}
+function eurToLocal(v){return window.fx&&window.fx[cc]?v*window.fx[cc]:null}
+
+async function rates(){
+ try{
+   var j=await fetch("https://api.frankfurter.app/latest?from=EUR&to=DKK,SEK,NOK",{cache:"no-store"}).then(function(r){return r.json()});
+   window.fx={DK:j.rates.DKK,SE:j.rates.SEK,NO:j.rates.NOK};
+ }catch(e){window.fx=null}
+}
+
+async function loadStations(){
+ if(fuel==="el"){
+   await loadEV();
+   return;
+ }
+ document.getElementById("status").textContent="HENTER DATA…";
+ var url="https://www.fuel-prices.eu/live/geojson.php?country="+cc+"&fuel="+fuel+"&bounds="+encodeURIComponent(radiusBounds())+"&limit=5000&sort=asc";
+ try{
+   var g=await fetch(url,{cache:"no-store"}).then(function(r){if(!r.ok)throw Error();return r.json()});
+   stations=(g.features||[]).map(function(f){
+     var p=f.properties||{},xy=f.geometry.coordinates,eur=Number(p.price);
+     return {id:p.id,name:p.name||"Tankstation",brand:p.brand||"",address:[p.address,p.city,p.postal_code].filter(Boolean).join(", "),lat:xy[1],lng:xy[0],eur:isFinite(eur)?eur:null,price:isFinite(eur)?eurToLocal(eur):null,updated:p.updated||"",open:p.is_open};
+   });
+   renderStations();
+   document.getElementById("notice").textContent=cc==="SE"?"Sverige: priser kan være kædernes offentlige listpris og er derfor ikke nødvendigvis identiske med den lokale pumpepris.":"Aktuelle stationsdata fra live feed. Prisen vises med kilde og tidspunkt i stationen.";
+   document.getElementById("status").textContent=stations.length+" STATIONER";
+ }catch(e){
+   stations=[];renderStations();document.getElementById("status").textContent="DATAFEJL";document.getElementById("notice").textContent="Kunne ikke hente live stationsdata. Ingen opdigtede priser vises.";
+ }
+}
+
+async function loadEV(){
+ stations=[];
+ var b=map.getBounds(),q="[out:json][timeout:20];nwr("+b.getSouth()+","+b.getWest()+","+b.getNorth()+","+b.getEast()+")[amenity=charging_station];out center tags;";
+ try{
+   var j=await fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent(q)).then(function(r){return r.json()});
+   stations=j.elements.map(function(x){return{id:"ev-"+x.type+"-"+x.id,name:x.tags?.name||x.tags?.brand||"Ladestation",brand:x.tags?.brand||"",address:[x.tags?.["addr:street"],x.tags?.["addr:housenumber"],x.tags?.["addr:city"]].filter(Boolean).join(" "),lat:x.lat||x.center?.lat,lng:x.lon||x.center?.lon,price:null,updated:"",open:null}}).filter(function(s){return s.lat&&s.lng});
+   renderStations();document.getElementById("status").textContent=stations.length+" LADER";document.getElementById("notice").textContent="⚡ Viser ladestationer. Der findes ikke én fælles offentlig skandinavisk feed med pålidelige ladepriser pr. lader.";
+ }catch(e){document.getElementById("notice").textContent="Ladestationer kunne ikke hentes."}
+}
+
+function renderStations(){
+ layer.clearLayers();
+ var valid=stations.filter(function(s){return s.price!=null}).sort(function(a,b){return a.price-b.price});
+ document.getElementById("summary").innerHTML=valid.length?"<b>"+valid[0].price.toFixed(2)+" "+META[cc].cur+"/L</b><div class='small'>laveste tilgængelige "+fName()+" · "+esc(valid[0].name)+"</div>":"<b>—</b><div class='small'>ingen pris tilgængelig i kortet</div>";
+ document.getElementById("list").innerHTML=stations.slice(0,150).map(function(s,i){return "<div class='item' data-id='"+esc(s.id)+"'><div class='badge'>"+(i+1)+"</div><div><div class='name'>"+esc(s.name)+"</div><div class='small'>"+esc(s.brand)+(s.address?" · "+esc(s.address):"")+"</div></div><div><div class='price'>"+(s.price!=null?s.price.toFixed(2)+" "+META[cc].cur:(fuel==="el"?"—":"—"))+"</div><div class='fresh'>"+esc(s.updated||"pris ikke oplyst")+"</div></div></div>"}).join("")||"<div class='small' style='padding:12px'>Ingen stationer fundet i kortudsnittet.</div>";
+ stations.forEach(function(s){var p=s.price!=null?s.price.toFixed(2)+" "+META[cc].cur:"Pris ikke oplyst";var note=cc==="SE"?"Kæde/listpris – ikke nødvendigvis lokal pumpepris":fuel==="el"?"Ladepris ikke oplyst":"Live stationspris";var m=L.circleMarker([s.lat,s.lng],{radius:6,weight:2}).addTo(layer);m.bindPopup("<b>"+esc(s.name)+"</b><br>"+esc(s.address)+"<br><strong>"+fName()+": "+p+"</strong><br><small>"+note+(s.updated?" · "+esc(s.updated):"")+"</small>");m.on("click",function(){selected=s})});
+ document.querySelectorAll(".item").forEach(function(el){el.onclick=function(){var s=stations.find(function(x){return String(x.id)===el.dataset.id});if(s){selected=s;map.setView([s.lat,s.lng],15)}}});
+}
+
+async function reload(){await rates();await loadStations()}
+document.querySelectorAll(".fuel").forEach(function(b){b.onclick=function(){document.querySelectorAll(".fuel").forEach(function(x){x.classList.remove("on")});b.classList.add("on");fuel=b.dataset.f;reload()}});
+document.getElementById("country").onchange=function(e){cc=e.target.value;map.fitBounds(META[cc].bounds);reload()};
+map.on("moveend",function(){if(Date.now()-window.lastMove>1200){window.lastMove=Date.now();loadStations()}});
+document.getElementById("searchBtn").onclick=async function(){var q=document.getElementById("search").value.trim();if(!q)return;var j=await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(q)).then(function(r){return r.json()});if(j[0]){map.setView([+j[0].lat,+j[0].lon],12);loadStations()}else alert("Stedet blev ikke fundet.")};
+document.getElementById("loc").onclick=function(){navigator.geolocation?.getCurrentPosition(function(p){map.setView([p.coords.latitude,p.coords.longitude],13);loadStations()},function(){alert("Placering blev ikke givet.")})};
+document.getElementById("reportBtn").onclick=function(){document.getElementById("modal").classList.add("show");document.getElementById("rstation").value=selected?.name||"";document.getElementById("rfuel").value=fuel};
+document.getElementById("close").onclick=function(){document.getElementById("modal").classList.remove("show")};
+document.getElementById("submit").onclick=function(){var n=document.getElementById("rstation").value.trim(),f=document.getElementById("rfuel").value,p=Number(document.getElementById("rprice").value);if(!n||!p){document.getElementById("rmsg").textContent="Udfyld station og pris.";return}localStorage.setItem("tankpris_report_"+Date.now(),JSON.stringify({station:n,fuel:f,price:p,country:cc,createdAt:new Date().toISOString()}));document.getElementById("rmsg").textContent="Rapport gemt på denne enhed."};
+reload();setInterval(reload,900000);
+</script>
+</body></html>
